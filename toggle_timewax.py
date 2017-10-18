@@ -26,20 +26,13 @@ try:
 except NameError:
     pass
 
-logger = logging.getLogger('toggl-timewax')
-logging.basicConfig(level=logging.INFO)
-
+logger = logging.getLogger('toggle-timewax')
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)6s:%(name)s:%(levelname)s - %(message)s')
 
 class EntryMismatchException(Exception):
     """ This will be raise if a service provides unexpected response entries. """
     pass
-
-class ClientProjectBreakdownContainer(object):
-    """
-    Class that is used as a container for all ClientProjects and ProjectBreakdowns
-    """
-    def __init__(self):
-        self.clients = []
 
 class ClientProject(object):
     """
@@ -89,7 +82,7 @@ class ClientProject(object):
                              timewax_code=xml_data.find('code').text)
 
     def __repr__(self):
-        return 'ClientProject(name={}, code={})'.format(self.name, self.timewax_code)
+        return 'ClientProject(name=%s, code=%s)' % (self.name, self.timewax_code)
 
 
 class ProjectBreakdown(object):
@@ -134,7 +127,7 @@ class ProjectBreakdown(object):
                                 timewax_code=xml_data.find('code').text)
 
     def __repr__(self):
-        return 'ProjectBreakdown(name={}, code={})'.format(self.name, self.timewax_code)
+        return 'ProjectBreakdown(name=%s, code=%s)' % (self.name, self.timewax_code)
 
 
 class TimeEntry(object):
@@ -308,20 +301,24 @@ class Timewax(object):
             for breakdown in self.get_project_breakdowns(project.timewax_code):
                 yield project, breakdown
 
-    def get_recent_entries(self, days_past=10):
+    def get_recent_entries(self, n_days=10):
         """ Get your entries from (default 10) days ago until now. """
+        
+        # Add a day to ensure no ensure no duplicates are created.
+        n_days += 1
 
-        ten_days_ago = arrow.now().shift(days=-days_past).format(self.DATE_FORMAT)
-        now = arrow.now().format(self.DATE_FORMAT)
+        n_days_ago = arrow.now().shift(days=-n_days).format(self.DATE_FORMAT)
+        now = arrow.now().format(self.DATE_FORMAT)        
+        logger.info('Getting Toggl entries since: %s' % n_days_ago)
 
         package = """
         <request>
-            <token>{}</token>
-            <dateFrom>{}</dateFrom>
-            <dateTo>{}</dateTo>
-            <resource>{}</resource>
+            <token>%s</token>
+            <dateFrom>%s</dateFrom>
+            <dateTo>%s</dateTo>
+            <resource>%s</resource>
         </request>
-        """.format(self.token, ten_days_ago, now, self.timewax_id)
+        """ % (self.token, n_days_ago, now, self.timewax_id)
 
         r = requests.post(self.ENTRIES_LIST, data=package)
         root = ET.fromstring(r.text)
@@ -333,7 +330,7 @@ class Timewax(object):
             try:
                 time_entry = TimeEntry.from_timewax(xml_entry)
             except EntryMismatchException:
-                pass
+                continue
 
             if time_entry.guid in entries:
                 entries[time_entry.guid].duration += time_entry.duration
@@ -349,18 +346,18 @@ class Timewax(object):
             entry.resource = self.timewax_id
         package = """
         <request>
-            <token>{}</token>
-            <timelines>{}</timelines>
+            <token>%s</token>
+            <timelines>%s</timelines>
         </request>
-        """.format(self.token, ''.join([e.to_xml() for e in time_entries]))
+        """ % (self.token, ''.join([e.to_xml() for e in time_entries]))
         r = requests.post(self.ENTRIES_ADD, data=package)
         
         root = ET.fromstring(r.text)
         if root.find('valid').text == 'yes':
-            logger.info('Succesfully added {} entries.'.format(len(time_entries)))
+            logger.info('Succesfully added %s entries.' % len(time_entries))
         else:
             logger.error('Unable to add entries to Timewax.')
-            logger.debug(r.text)
+            logger.info(r.text)
 
 
 class Toggl(object):
@@ -381,13 +378,17 @@ class Toggl(object):
         self.projects = self.get_all_projects()
 
     def get_workspace(self):
+        """ 
+        Get the workspace identifier (wid). 
+        This tooling only supports a single workspace. 
+        """
         r = requests.get(self.WORKSPACES, auth=self.auth)
         w = r.json()[0]
         logger.info('Using workspace named: %s' % w.get('name'))
         return w.get('id')
 
     def has_client(self, name):
-        """ check whether client exists """
+        """ Check whether client exists """
         return name in {client.toggl_name for client in self.clients.values()}
 
     def client_has_project(self, name, client_id):
@@ -403,17 +404,20 @@ class Toggl(object):
                 return id_
 
     def get_all_clients(self):
-        """ Return list of all ClientProjects in Toggl. """
+        """ 
+        Return dictionary of where keys are client 
+        identifiers and values ClientProjects in Toggl. 
+        """
         r = requests.get(self.CLIENTS, auth=self.auth)
         return {j.get('id'): ClientProject.from_toggl(j) for j in r.json()}
 
     def get_timewax_project_breakdown(self, pid):
-        """ get timewax code and breakdown based on toggl pid """
+        """ Get timewax code and breakdown based on toggl pid """
         for client_id, projects in self.projects.items():
             if pid in projects:
                 break
         else:
-            raise Exception('Client not found for project {}'.format(pid))
+            raise Exception('Client not found for project %s' % pid)
         
         project_code = self.clients.get(client_id).timewax_code
         breakdown = projects.get(pid).timewax_code
@@ -421,7 +425,7 @@ class Toggl(object):
 
     def get_all_projects(self):
         """ builds dictionary with all ProjectBreakdowns currently avialable in Toggl """
-        r = requests.get(self.WORKSPACES + '/{}/projects'.format(self.wid),
+        r = requests.get(self.WORKSPACES + '/%s/projects' % self.wid,
                          params={'per_page': 1000,
                                  'active': 'both'},
                          auth=self.auth)
@@ -437,9 +441,14 @@ class Toggl(object):
         
         return project_dict
 
-    def get_recent_entries(self):
-        """ Get all entries with a start date of 9 days ago or fewer """
-        r = requests.get(self.TIME_ENTRIES, auth=self.auth)
+    def get_recent_entries(self, n_days=9):
+        """ Yield all entries with a start date of n_days (default: 9) days ago or fewer """
+
+        n_days_ago = arrow.now().shift(days=-n_days)
+        params = {'start_date': n_days_ago.isoformat()}
+        logger.info('Getting Toggl entries since: %s' % n_days_ago)
+
+        r = requests.get(self.TIME_ENTRIES, params=params, auth=self.auth)
         for entry in r.json():
             project, breakdown = self.get_timewax_project_breakdown(entry.get('pid'))
             yield TimeEntry(description=entry.get('description'),
@@ -502,9 +511,9 @@ class Toggl(object):
             project_id = data.get('id')
 
             try:
-                self.projects[client_id].update({project_id: ProjectBreakdown(data)})
+                self.projects[client_id].update({project_id: ProjectBreakdown.from_toggl(data)})
             except KeyError:
-                self.projects[client_id] = {project_id: ProjectBreakdown(data)}
+                self.projects[client_id] = {project_id: ProjectBreakdown.from_toggl(data)}
 
             logger.info('Added project: %s ' % project_name)
         else:
