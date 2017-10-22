@@ -27,7 +27,7 @@ logger = logging.getLogger('toggl-timewax')
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s:%(name)s:%(levelname)s - %(message)s')
 
-CONFIG_FILE = os.path.join(appdirs.user_config_dir('toggle-timewax'), 'config.pickle')
+CONFIG_FILE = os.path.join(appdirs.user_config_dir('toggl-timewax'), 'config.json')
 N_DAYS_DEFAULT = 9
 
 # Python 2/3 compatibility
@@ -48,7 +48,9 @@ def sync_to_toggl(toggl: Toggl, timewax: Timewax):
         toggl_client_id = toggl.get_client_id(client_project.toggl_name)
 
         if not toggl.client_has_project(project_breakdown.toggl_name, toggl_client_id):
-            toggl.add_project(toggl_client_id, project_breakdown.toggl_name)
+
+            if timewax.check_breakdown_authorization(client_project, project_breakdown):
+                toggl.add_project(toggl_client_id, project_breakdown.toggl_name)
 
     logger.info("Finished synchronizing projects from Timewax to Toggl.")
 

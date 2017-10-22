@@ -27,7 +27,9 @@ logging.basicConfig(level=logging.INFO,
 
 
 class EntryMismatchException(Exception):
-    """ This will be raise if a service provides unexpected response entries. """
+    """
+    This will be raise if a service provides unexpected response entries.
+    """
     pass
 
 
@@ -136,6 +138,19 @@ class TimeEntry(object):
 
     def __init__(self, guid, description=None, duration=None, pid=None, 
                  start=None, stop=None, wid=None, resource=None, breakdown=None, project=None):
+        """
+
+        :param guid: as created by Toggl
+        :param description:
+        :param duration: seconds
+        :param pid:
+        :param start:
+        :param stop:
+        :param wid:
+        :param resource:
+        :param breakdown: Timewax code
+        :param project: Timewax code
+        """
     
         self.guid = guid
 
@@ -255,13 +270,18 @@ class Timewax(object):
             raise SystemExit
         return token
 
-    def create_request(self, data):
-        """ Put data parameter inside xml request including token. """
+    def create_request(self, data: str) -> str:
+        """
+        Put data parameter inside xml string with request including token.
+
+        :param data: xml string specific for the end point you want to use.
+        :return: xml string including request and token.
+        """
         return "<request><token>%s</token>%s</request>" % (self.token, data)
     
     def list_of_projects(self):
         """
-        Returns generator that yields project objects.
+        Yields project objects for projects visible to your user.
         """
         project_list = self.create_request(
             """<isParent></isParent>
@@ -294,15 +314,19 @@ class Timewax(object):
 
     def list_my_projects(self):
         """
-        Returns tuples for every available breakdown in Timewax:
+        Yields tuples for every available breakdown in Timewax:
           (ClientProject, ProjectBreakdown)
         """
         for project in self.list_of_projects():
             for breakdown in self.get_project_breakdowns(project.timewax_code):
                 yield project, breakdown
 
-    def get_recent_entries(self, n_days=10):
-        """ Get your entries from (default 10) days ago until now. """
+    def get_recent_entries(self, n_days: int=10):
+        """
+        Get your entries from a number of days ago until now (default 10).
+
+        :param int n_days: days to look back for entries.
+        """
         
         # Add a day to ensure no ensure no duplicates are created
         # as Timewax works using a less precise date format.
@@ -342,8 +366,44 @@ class Timewax(object):
                 })
         return entries
 
-    def add_entries(self, time_entries):
-        """ Add a list of TimeEntry objects to Timewax """
+    def check_breakdown_authorization(self, project: ClientProject, breakdown: ProjectBreakdown) -> bool:
+        """
+        Check if your user is authorized to book hours on a project.
+
+        :param project: a ClientProject object.
+        :param breakdown: a ProjectBreakdown object.
+        :return bool: True or False
+        """
+
+        # Due to the limited Timewax api it is impossible to directly query for authorization.
+        # Here we use a trick by trying to write a negative duration time entry. The API
+        # will consider this a valid post request to the API but it will not return an identifier
+        # for the time entry or write it to the database. In case the user is not authorised it
+        # will return a non-valid.
+        probe = TimeEntry(guid='not-quite-a-guid',
+                          resource=self.timewax_id,
+                          duration=-60,
+                          project=project.timewax_code,
+                          breakdown=breakdown.timewax_code)
+
+        package = self.create_request(
+            "<timelines>%s</timelines>" % probe.to_xml())
+
+        r = requests.post(self.ENTRIES_ADD, data=package)
+
+        root = ElementTree.fromstring(r.text)
+        if root.find('valid').text == 'yes':
+            return True
+        else:
+            logger.info('Not authorised for %r - %r' % (project, breakdown))
+            return False
+
+    def add_entries(self, time_entries: [TimeEntry]):
+        """
+        Add a list of TimeEntry objects to Timewax.
+
+        :param time_entries: list of TimeEntry objects.
+        """
         for entry in time_entries:
             entry.resource = self.timewax_id
         package = self.create_request(
@@ -393,12 +453,23 @@ class Toggl(object):
         logger.info('Using workspace named: %s' % w.get('name'))
         return w.get('id')
 
-    def has_client(self, name):
-        """ Check whether client exists """
+    def has_client(self, name: str) -> bool:
+        """
+        Check whether client exists in Toggl by checking the self.clients dictionary.
+
+        :param name: name of a Timewax client.
+        :return bool: client exists or not.
+        """
         return name in {client.toggl_name for client in self.clients.values()}
 
-    def client_has_project(self, name, client_id):
-        """ returns True or False whether client has project with name """
+    def client_has_project(self, name: str, client_id: int) -> bool:
+        """
+        Returns True or False whether client has project with name by checking the self.project dictionary.
+
+        :param str name: project name
+        :param int client_id: identifier for client
+        :return bool: client has project or not.
+        """
         if client_id not in self.clients:
             raise EntryMismatchException('No client with ID %s found' % client_id)
         projects = self.projects.get(client_id, {})
