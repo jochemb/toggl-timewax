@@ -34,13 +34,16 @@ setuptools.setup(
 
     keywords=['toggl', 'timewax'],
 
+    packages=setuptools.find_packages(exclude=['tests', 'tests.*']),
+    include_package_data=True,
+
     download_url='https://github.com/jochemb/toggl-timewax/tarball/{}/'.format(version_string),
 
     install_requires=required_packages,
 
     entry_points={
         'console_scripts': [
-            'toggl-timewax = toggl_timewax.cli:cli'
+            'toggl-timewax = toggl_timewax.cli:main'
         ]
     },
 

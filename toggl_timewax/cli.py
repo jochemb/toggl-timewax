@@ -313,5 +313,9 @@ def read_config():
     return config
 
 
-if __name__ == "__main__":
+def main():
     cli(obj={})
+
+
+if __name__ == "__main__":
+    main()
