@@ -1,3 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+A tool for synchronizing data between Timewax and
+Toggl timekeeping services.
+
+Author: Jochem Bijlard
+"""
 import setuptools
 
 import os
@@ -24,9 +32,6 @@ setuptools.setup(
     author="Jochem Bijlard",
     author_email="j.bijlard@gmail.com",
 
-    packages=setuptools.find_packages(exclude=['tests', 'tests.*']),
-    include_package_data=True,
-
     keywords=['toggl', 'timewax'],
 
     download_url='https://github.com/jochemb/toggl-timewax/tarball/{}/'.format(version_string),
@@ -35,8 +40,7 @@ setuptools.setup(
 
     entry_points={
         'console_scripts': [
-            'to_toggl = toggl_timewax.cli:to_toggl',
-            'to_timewax = toggl_timewax.cli:to_timewax'
+            'toggl-timewax = toggl_timewax.cli:cli'
         ]
     },
 
