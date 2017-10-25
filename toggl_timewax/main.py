@@ -10,6 +10,8 @@ Author: Jochem Bijlard
 from __future__ import absolute_import, division, print_function
 
 from xml.etree import ElementTree
+from xml.sax.saxutils import escape
+
 from getpass import getpass
 import logging
 import re
@@ -224,8 +226,8 @@ class TimeEntry(object):
             <endTime>%s</endTime>
             <description>%s</description>
         </timeline>
-        """ % (self.resource, self.project, self.breakdown, self.date,
-               self.hours, self.start_time, self.end_time, self.timewax_description)
+        """ % (self.resource, self.project, escape(self.breakdown), self.date, self.hours,
+               self.start_time, self.end_time, escape(self.timewax_description))
 
     @staticmethod
     def from_timewax(xml_data):
@@ -430,7 +432,7 @@ class Timewax(object):
             entry.resource = self.timewax_id
             logger.info(u'To be added: %r' % entry)
         package = self.create_request(
-            u'<timelines>%s</timelines>' % ''.join([e.to_xml() for e in time_entries]))
+            u'<timelines>%s</timelines>' % u''.join([e.to_xml() for e in time_entries]))
 
         r = requests.post(self.ENTRIES_ADD, data=package)
         
